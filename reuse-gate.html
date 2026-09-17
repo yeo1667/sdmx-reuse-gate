@@ -490,6 +490,33 @@ h1,h2,h3{color:var(--ink);margin:0}
 }
 .flash u{text-decoration:none;font-weight:700;flex:none}
 .flash.ok{background:var(--ok-t);color:var(--ok)}
+.bhead{display:flex;gap:.8rem;flex-wrap:wrap;align-items:flex-end}
+.bhead label{display:flex;flex-direction:column;gap:.25rem;font-size:.8rem;
+  color:var(--quiet);font-weight:500}
+.bi{
+  font:inherit;font-size:.95rem;padding:.5rem .7rem;width:9rem;
+  background:var(--paper);color:var(--ink);border:1px solid var(--rule);border-radius:9px;
+}
+.bhead label[style] .bi{width:100%}
+.badd{display:flex;gap:.6rem;flex-wrap:wrap;align-items:center;margin-bottom:.2rem}
+#bResult:not(:empty){margin-top:1rem;padding-top:1rem;border-top:1px solid var(--hair)}
+.bcand{display:flex;flex-direction:column;gap:.45rem;margin-top:.8rem}
+.brow{
+  display:grid;grid-template-columns:1fr auto;gap:1rem;align-items:center;
+  padding:.85rem 1.1rem;border-bottom:1px solid var(--hair);
+}
+.brow:last-child{border-bottom:0}
+.brow .bl{min-width:0}
+.brow code{font-size:.95rem;font-weight:600;color:var(--ink);display:block}
+.brow .bs{font-size:.86rem;color:var(--quiet);display:block}
+.brow .bx{
+  font:inherit;font-size:.82rem;background:none;border:0;color:var(--faint);
+  cursor:pointer;text-decoration:underline;
+}
+.bsrc{
+  font-family:"IBM Plex Mono",monospace;font-size:.66rem;font-weight:600;
+  letter-spacing:.05em;padding:.2rem .55rem;border-radius:100px;white-space:nowrap;
+}
 .dsd-bar{
   display:flex;justify-content:space-between;align-items:center;gap:1.2rem;
   flex-wrap:wrap;margin:0 0 1.1rem;padding:.85rem 1.1rem;border-radius:12px;
@@ -534,6 +561,7 @@ h1,h2,h3{color:var(--ink);margin:0}
     <div class="tabs" role="tablist">
       <button class="tab" role="tab" data-v="home" aria-selected="true">Overview</button>
       <button class="tab" role="tab" data-v="store" aria-selected="false">Storage</button>
+      <button class="tab" role="tab" data-v="build" aria-selected="false">Build</button>
       <button class="tab" role="tab" data-v="check" aria-selected="false">Check</button>
       <button class="tab" role="tab" data-v="decide" aria-selected="false">Decisions <b id="nDec" style="font-family:'IBM Plex Mono',monospace;font-size:.75rem"></b></button>
     </div>
@@ -648,6 +676,45 @@ h1,h2,h3{color:var(--ink);margin:0}
   </div>
 </div>
 
+<!-- ══════════ BUILD ══════════ -->
+<div class="view" id="v-build" hidden>
+  <div class="wrap pad">
+    <h2 class="sf" style="font-size:1.8rem;font-weight:400;letter-spacing:-.02em;margin-bottom:.3rem">Build a structure</h2>
+    <p class="sub" style="font-size:1rem;color:var(--quiet);margin:0 0 1.2rem;max-width:48rem">
+      Name a component and the standard is consulted before anything is created.
+      Take what exists, or create your own once you have seen what it would replace.</p>
+
+    <div class="card" style="margin-bottom:1rem">
+      <div class="bhead">
+        <label>Agency<input class="bi" id="bAgency" value="KOSTAT" spellcheck="false"></label>
+        <label>Id<input class="bi" id="bId" value="BSI" spellcheck="false"></label>
+        <label>Version<input class="bi" id="bVer" value="1.0" spellcheck="false"></label>
+        <label style="flex:1 1 14rem">Name<input class="bi" id="bName" value="Business Survey Index"></label>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:1rem">
+      <div class="badd">
+        <input class="search" id="bTerm" style="flex:1 1 14rem"
+               placeholder="Component id or concept name &mdash; FREQ, reference area, unit&hellip;">
+        <div class="seg" role="group" id="bRole">
+          <button data-role="Dimension" aria-pressed="true">Dimension</button>
+          <button data-role="Attribute" aria-pressed="false">Attribute</button>
+          <button data-role="Measure" aria-pressed="false">Measure</button>
+        </div>
+        <button class="btn btn-p" id="bCheck">Look it up</button>
+      </div>
+      <div id="bResult"></div>
+    </div>
+
+    <div class="frame" style="min-height:0">
+      <div class="frame-h"><span id="bCount">no components yet</span>
+        <span><button class="chip" id="bExport" style="padding:.2rem .8rem;font-size:.82rem">Export as CSV</button></span></div>
+      <div class="scroller"><div class="dec" id="bList"></div></div>
+    </div>
+  </div>
+</div>
+
 <!-- ══════════ CHECK ══════════ -->
 <div class="view" id="v-check" hidden>
   <div class="wrap pad">
@@ -722,7 +789,8 @@ const BY = Object.fromEntries(STD.map(c => [c.id, c]));
 const LBY = Object.fromEntries(LOC.map(d => [d.id, d]));
 
 /* ══════ nav ══════ */
-const views = {home:"v-home", store:"v-store", check:"v-check", decide:"v-decide"};
+const views = {home:"v-home", store:"v-store", build:"v-build",
+               check:"v-check", decide:"v-decide"};
 function go(v){
   Object.entries(views).forEach(([k,id]) =>
     document.getElementById(id).hidden = (k !== v));
@@ -1368,7 +1436,10 @@ function pairHTML(r){
   </div>` + evTable(S.ev);
 }
 
-function render(r){
+function render(r, bare){
+  /* bare: the verdict without the decision controls. Build has its own —
+     showing both would put two different "create a local one" buttons on
+     one screen, wired to different places.                             */
   const [tag, tCls, colour] = META[r.status];
   let h = `<span class="spine" style="background:${colour}"></span><div class="vbody">`;
   h += `<div class="vhead"><h3>${esc(r.label)}</h3><span class="tag ${tCls}">${tag}</span></div>`;
@@ -1426,6 +1497,12 @@ function render(r){
   (r.forbid||[]).forEach(f => h += `<p class="forbid"><u>⊘</u><span>${esc(f)}</span></p>`);
   if(r.question) h += `<p class="question"><b>Your decision</b>${esc(r.question)}</p>`;
 
+  if(bare){
+    h += `</div>`;
+    const d0 = document.createElement("div");
+    d0.className = "v"; d0.innerHTML = h;
+    return d0;
+  }
   if(r.status === "REUSE_LOOKUP_REQUIRED" && r.rep && !DECISIONS[r.label]){
     LK_CONCEPT[r.label] = r.found ? r.found.id : r.label;
     h += `<div class="lookup" data-lk="${esc(r.label)}" data-cl="${esc(r.rep.code)}">
@@ -1792,6 +1869,140 @@ function run(){
 document.getElementById("run").onclick = run;
 document.getElementById("free").addEventListener("keydown", e => {
   if(e.key === "Enter") run(); });
+
+/* ══════ build ══════
+   The gap map asks for modelling that proposes a standard *before*
+   inventing. That is a question of order: consult, then decide. Here the
+   lookup happens as the component is named, and creating a local one is
+   a choice made after seeing what it would replace.                    */
+const BUILD = [];
+let BROLE = "Dimension";
+
+document.querySelectorAll("#bRole button").forEach(b => b.onclick = () => {
+  BROLE = b.dataset.role;
+  document.querySelectorAll("#bRole button").forEach(x =>
+    x.setAttribute("aria-pressed", String(x === b)));
+});
+
+function bLookup(){
+  const term = document.getElementById("bTerm").value.trim();
+  const out = document.getElementById("bResult");
+  if(!term){ out.innerHTML = ""; return; }
+  const r = evaluate(term, null, null);
+  const id = (r.found ? r.found.id : term.toUpperCase().replace(/[^A-Z0-9_]/g,"_"));
+
+  const opts = [];
+  if(r.found && r.std !== null){
+    const c = r.found;
+    const rep = (BY[c.id] && (BY[c.id].cl || (BY[c.id].h ? BY[c.id].h + " · no version"
+              : (BY[c.id].cands ? BY[c.id].cands.length + " codelists" : BY[c.id].r)))) || null;
+    opts.push({id:c.id, n:c.n, rep, src:"standard"});
+  }
+  (r.opts||[]).forEach(o => { if(!opts.some(x => x.id === o.id))
+    opts.push({id:o.id, n:o.n, rep:o.rep, src:o.src}); });
+
+  let h = render(r, true).innerHTML;
+  h = `<div class="v" style="box-shadow:none;border-radius:11px">${h}</div>`;
+  h += `<div class="bcand">`;
+  opts.slice(0,3).forEach(o => {
+    h += `<button class="opt" type="button" data-badd="${esc(o.id)}"
+            data-brep="${esc(o.rep||"")}" data-bsrc="${esc(o.src)}">
+      <span class="rk">＋</span>
+      <span class="oi"><code>${esc(o.id)}</code><span>${esc(o.n||"")}</span>
+        <u>take this &middot; ${esc(o.rep || "no codelist")}</u></span>
+    </button>`;
+  });
+  h += `<button class="opt opt-none" type="button" data-badd="${esc(id)}"
+          data-brep="" data-bsrc="local">
+    <span class="rk">＋</span>
+    <span class="oi"><code>${esc(id)}</code>
+      <span>Create a local component${opts.length
+        ? " instead of the above" : ""}</span></span>
+  </button></div>`;
+  out.innerHTML = h;
+}
+document.getElementById("bCheck").onclick = bLookup;
+document.getElementById("bTerm").addEventListener("keydown", e => {
+  if(e.key === "Enter") bLookup(); });
+
+document.addEventListener("click", e => {
+  const b = e.target.closest("[data-badd]");
+  if(b){
+    const id = b.dataset.badd;
+    if(BUILD.some(c => c.id === id)){
+      flash(`${id} is already in the structure.`); return;
+    }
+    const agency = document.getElementById("bAgency").value.trim() || "LOCAL";
+    BUILD.push({
+      id, role: BROLE, src: b.dataset.bsrc,
+      concept: b.dataset.bsrc === "local"
+        ? `${agency}:${agency}_CONCEPTS(1.0).${id}`
+        : `SDMX:CROSS_DOMAIN_CONCEPTS(1.0).${id}`,
+      cl: b.dataset.brep && /\(\d/.test(b.dataset.brep) ? b.dataset.brep : null,
+      clNote: b.dataset.brep && !/\(\d/.test(b.dataset.brep) ? b.dataset.brep : null
+    });
+    document.getElementById("bTerm").value = "";
+    document.getElementById("bResult").innerHTML = "";
+    drawBuild();
+    return;
+  }
+  const x = e.target.closest("[data-brm]");
+  if(x){ const i = BUILD.findIndex(c => c.id === x.dataset.brm);
+    if(i >= 0) BUILD.splice(i,1); drawBuild(); }
+});
+
+function drawBuild(){
+  const el = document.getElementById("bList");
+  document.getElementById("bCount").textContent = BUILD.length
+    ? `${BUILD.length} component${BUILD.length>1?"s":""} · `
+      + `${BUILD.filter(c=>c.src!=="local").length} reused, `
+      + `${BUILD.filter(c=>c.src==="local").length} local`
+    : "no components yet";
+  if(!BUILD.length){
+    el.innerHTML = `<div class="more" style="padding:2.5rem 1rem">
+      Name a component above. Whatever the standard already has is offered
+      first; creating a local one comes after.</div>`;
+    return;
+  }
+  el.innerHTML = BUILD.map(c => `<div class="brow">
+    <span class="bl"><code>${esc(c.id)}</code>
+      <span class="bs">${esc(c.role)} &middot; ${esc(c.concept)}${
+        c.cl ? " &middot; " + esc(c.cl)
+             : (c.clNote ? " &middot; " + esc(c.clNote) : "")}</span></span>
+    <span><span class="bsrc ${c.src === "local" ? "t-stop" : "t-ok"}">${
+      esc(c.src === "local" ? "local" : "reused")}</span>
+      <button class="bx" data-brm="${esc(c.id)}">remove</button></span>
+  </div>`).join("");
+}
+drawBuild();
+
+document.getElementById("bExport").onclick = () => {
+  if(!BUILD.length){ flash("Nothing to export yet."); return; }
+  const g = id => (document.getElementById(id).value || "").trim();
+  const q = v => /[",\n]/.test(v) ? `"${v.replace(/"/g,'""')}"` : v;
+  const dims = BUILD.filter(c => c.role !== "Attribute");
+  const atts = BUILD.filter(c => c.role === "Attribute");
+  const L = [
+    ["FusionXL Version","1.0"], ["Type","DataStructure"],
+    ["Agency Id", g("bAgency")], ["Id", g("bId")], ["Version", g("bVer")],
+    ["Name (en)", g("bName")], ["Final","FALSE"], [],
+    ["Dimension Id","Concept","Codelist","Text Type","Dimension Type","Group1"]
+  ];
+  dims.forEach(c => L.push([c.id, c.concept, c.cl || "",
+    c.role === "TimeDimension" ? "OBSERVATIONAL_TIME_PERIOD" : "",
+    c.role, c.role === "Measure" ? "" : "y"]));
+  if(atts.length){
+    L.push([]);
+    L.push(["Attribute Id","Concept","Codelist","Text Type","Mandatory","Attribute Attachment"]);
+    atts.forEach(c => L.push([c.id, c.concept, c.cl || "", "", "false", "Group1"]));
+  }
+  const csv = L.map(r => r.map(v => q(String(v ?? ""))).join(",")).join("\n");
+  const blob = new Blob(["\uFEFF" + csv], {type:"text/csv;charset=utf-8"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `${g("bAgency")}_${g("bId")}.csv`;
+  a.click(); URL.revokeObjectURL(a.href);
+};
 
 /* ══════ CSV ══════ */
 function parseCSV(text){
