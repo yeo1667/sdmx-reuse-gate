@@ -120,6 +120,59 @@ h1,h2,h3{color:var(--ink);margin:0}
   overflow:hidden;
 }
 .seg-s button{font-size:.8rem;padding:.24rem .7rem}
+.mx-wrap{overflow-x:auto;padding:.2rem .1rem 0}
+.mx{border-collapse:collapse;font-size:.84rem;width:100%}
+.mx th,.mx td{padding:.34rem .5rem;text-align:center;white-space:nowrap}
+.mx thead th{
+  border-bottom:2px solid var(--rule);vertical-align:bottom;
+  font-weight:600;color:var(--quiet);font-size:.76rem;
+}
+.mx-cap{
+  margin:.1rem .2rem .7rem;font-size:.85rem;color:var(--quiet);
+  line-height:1.5;max-width:54rem;
+}
+.mx-h{max-width:7rem;min-width:5.2rem}
+.mx-nm{
+  display:block;font-size:.62rem;font-weight:400;color:var(--faint);
+  line-height:1.25;white-space:normal;margin-top:.1rem;
+  max-height:2.5em;overflow:hidden;
+}
+.mx-h .ag{display:block;margin:0 auto .16rem;font-size:.56rem;padding:.06rem .3rem}
+.mx-id{
+  font-family:"IBM Plex Mono",monospace;font-size:.74rem;font-weight:600;
+  color:var(--ink);display:block;overflow:hidden;text-overflow:ellipsis;
+}
+.mx-own .mx-id{color:var(--clay)}
+.mx-here{background:var(--clay-soft);border-radius:8px 8px 0 0}
+.mx-here .mx-id{color:var(--clay)}
+.mx-here .mx-nm{color:var(--clay);font-style:italic}
+.mx tbody td.mx-hcell{background:var(--clay-soft)}
+th.mx-c{
+  text-align:left;position:sticky;left:0;background:var(--surface);
+  display:flex;align-items:center;gap:.45rem;font-weight:500;
+}
+.mx tbody th.mx-c{border-bottom:1px solid var(--hair)}
+.mx-c i{width:4px;height:15px;border-radius:2px;flex:none;display:block}
+.mx-c code{font-size:.82rem;color:var(--ink)}
+.mx tbody td{border-bottom:1px solid var(--hair)}
+.mx tbody tr:hover td,.mx tbody tr:hover th.mx-c{background:var(--sunk)}
+.mx-b{
+  font:inherit;font-size:.72rem;line-height:1;cursor:pointer;
+  color:var(--ok);background:none;border:0;padding:.24rem .38rem;
+  border-radius:100px;transition:.12s;
+}
+.mx-b:hover{background:var(--ok-t);transform:scale(1.25)}
+.mx-b.on{
+  background:var(--clay);color:#fff;
+  box-shadow:0 0 0 3px var(--clay-soft);
+}
+.mx-b:focus-visible{outline:2px solid var(--clay);outline-offset:1px}
+.mx-done th.mx-c{background:var(--ok-t)}
+.mx-tick{color:var(--ok);font-size:.8rem;margin-left:.1rem}
+.mx-y{color:var(--ok);font-size:.7rem}
+.mx-x{color:var(--hair)}
+.mx-n{font-family:"IBM Plex Mono",monospace;font-size:.72rem;color:var(--faint)}
+.mx-note{margin:.9rem .2rem 0;font-size:.83rem;color:var(--quiet);line-height:1.5}
 .grp{
   display:flex;align-items:baseline;gap:.7rem;flex-wrap:wrap;
   margin:1.9rem 0 .7rem;padding:0 .2rem .55rem;
@@ -995,7 +1048,7 @@ details[open] > .rel-h::before, details[open] > .ms-h::before{content:"\25be"}
         <div class="frame-h"><span id="rowCount">&nbsp;</span>
           <span class="seg seg-s" role="group" id="viewSeg">
             <button data-vm="item" aria-pressed="true">By item</button>
-            <button data-vm="dsd" aria-pressed="false">By DSD</button>
+            <button data-vm="dsd" aria-pressed="false" title="Where else each component turns up">By DSD</button>
           </span>
           <span>scroll for the rest</span></div>
         <div class="scroller"><div class="rows" id="rows" aria-live="polite"></div></div>
@@ -2176,10 +2229,15 @@ function render(r, bare){
   return d;
 }
 
-let LAST = [], LAST_BANNER = null;
+let LAST = [], LAST_BANNER = null, LAST_SRC = null;
 let VIEWMODE = "item";
 function decide(label, id, src, rep){
-  if(DECISIONS[label] && DECISIONS[label].id === id){ delete DECISIONS[label]; }
+  const prev = DECISIONS[label];
+  /* the same choice again undoes it; a different one replaces it. Two cells
+     in the matrix can name the same component and differ only in whose
+     version they follow, so the target alone cannot tell them apart. */
+  if(prev && prev.id === id && (prev.rep || "") === (rep || "")
+     && (prev.src || "") === (src || "")){ delete DECISIONS[label]; }
   else {
     /* snapshot the verdict as it stood when the expert decided.
        LAST is memory only — without this the reason is gone on refresh,
@@ -2202,6 +2260,11 @@ function decide(label, id, src, rep){
   if(typeof drawBuild === "function") drawBuild();
 }
 document.addEventListener("click", e => {
+  const mx = e.target.closest("[data-mx-l]");
+  if(mx){
+    decide(mx.dataset.mxL, mx.dataset.mxI, mx.dataset.mxS, mx.dataset.mxR);
+    return;
+  }
   /* Build reuses the .opt look but not its meaning — its buttons carry
      data-badd and belong to the structure being built, not to a decision. */
   const o = e.target.closest(".opt");
@@ -2436,54 +2499,87 @@ function show(results, keep, banner){
     rows.appendChild(h);
   };
   if(VIEWMODE === "dsd"){
-    /* the same verdicts, arranged by the structures that already hold them:
-       what each stored DSD contributes to the one being checked */
-    const seen = new Set();
-    /* your own structures first, then registered ones that overlap enough
-       to be worth reading — a DSD sharing one component says nothing */
+    /* A second list of the same cards is not a second view. What the
+       structures actually say is which component turns up where, so this
+       is a table: one row per component, one column per structure.    */
     const cids = componentIds(results);
-    const hit = d => d.c.filter(c => cids.includes(c.id)).map(c => c.id);
-    const groups = DSD.concat(
-      REG.map(d => { const h = hit(d);
-              return {d, n:h.length, rare:h.filter(isDistinctive).length}; })
-         .filter(x => x.n >= 2)
-         .sort((a,b) => b.rare - a.rare || b.n - a.n)
-         .slice(0,5).map(x => x.d));
-    groups.forEach(d => {
-      const ids = new Set(d.c.map(c => c.id));
-      const mine = results.filter((r,i) => ids.has(cids[i]));
-      if(!mine.length) return;
-      const rare = mine.filter(r => isDistinctive(cids[results.indexOf(r)]));
-      head(d.urn, d.n,
-        (rare.length ? `${rare.length} uncommon \u00b7 ` : ``)
-        + `${mine.length} of ${results.length} checked \u00b7 ${d.c.length} in the DSD`,
-        DSD.includes(d) ? "grp-own" : "");
-      /* a component two DSDs share is one component: its card, and its
-         decision, belong in one place. Later groups name it instead. */
-      const fresh = mine.filter(r => !seen.has(r.label));
-      const again = mine.filter(r =>  seen.has(r.label));
-      fresh.forEach(r => { seen.add(r.label); put(r); });
-      n += again.length;      /* named above, not lost */
-      if(again.length){
-        const p = document.createElement("p");
-        p.className = "grp-also";
-        p.innerHTML = `Also here, shown above: `
-          + again.map(r => `<code>${esc(r.label)}</code>`).join(" ");
-        rows.appendChild(p);
-      }
-    });
-    const rest = results.filter(r => !seen.has(r.label));
-    if(rest.length && groups.length)
-      head("\u2014", "In none of these",
-           `${rest.length} of ${results.length} checked`, "grp-none");
-    if(!groups.length){
+    const cell = d => ({d, hit: d.c.filter(c => cids.includes(c.id)).map(c => c.id)});
+    /* the structure being checked comes first: following it is a real
+       choice, and seeing its own column is what says where this came from */
+    const srcCol = REG.concat(DSD).filter(d => LAST_SRC && d.urn === LAST_SRC)
+      .map(d => ({...cell(d), here:true}));
+    const own = DSD.filter(d => !LAST_SRC || d.urn !== LAST_SRC)
+      .map(d => ({...cell(d), own:true})).filter(x => x.hit.length);
+    const cols = REG
+      .filter(d => !LAST_SRC || d.urn !== LAST_SRC)
+      .map(cell)
+      .filter(x => x.hit.length >= 2)
+      .sort((a,b) => b.hit.length - a.hit.length)
+      .slice(0, 6);
+    const all = srcCol.concat(own, cols);
+
+    if(!all.length){
       const m = document.createElement("div");
-      m.className = "more"; m.style.padding = "1.4rem 1rem";
-      m.innerHTML = `Nothing to group by \u2014 no structure here or in the `
-        + `registry shares two or more of these components.`;
+      m.className = "more"; m.style.padding = "1.6rem 1rem";
+      m.innerHTML = LAST_SRC
+        ? `No other structure shares two or more of these components.`
+        : `No structure here or in the registry shares two or more of these.`;
       rows.appendChild(m);
+      n = results.length;              /* nothing lost — there is nothing to show */
+    } else {
+      const inAny = id => REG.filter(d => d.c.some(c => c.id === id)).length;
+      let h = `<p class="mx-cap">Each column is a structure someone registered.
+        A dot means that structure has a component with the same id.</p>
+        <div class="mx-wrap"><table class="mx"><thead><tr>
+        <th class="mx-c">Component</th>
+        ${all.map(x => `<th class="mx-h${x.own ? " mx-own" : ""}${x.here ? " mx-here" : ""}"
+            title="${esc(x.d.urn)} \u2014 ${esc(x.d.n)} (${x.d.c.length} components)">
+          <span class="ag ag-c" style="${agStyle(x.d.agency||"LOCAL")}">${
+            esc(x.d.agency || "yours")}</span>
+          <span class="mx-id">${esc(x.d.id)}</span>
+          <span class="mx-nm">${x.here ? "this structure" : esc(x.d.n)}</span></th>`).join("")}
+        <th class="mx-n" title="How many of the ${REG.length} registered structures use it">
+          in all</th></tr></thead><tbody>`;
+      results.forEach((r,i) => {
+        const id = cids[i];
+        const [, , colour] = META[r.status];
+        const total = id ? inAny(id) : 0;
+        const done = !!DECISIONS[r.label];
+        h += `<tr class="${done ? "mx-done" : ""}"><th class="mx-c">
+          <i style="background:${colour}"></i>
+          <code>${esc(r.label)}</code>${done
+            ? `<b class="mx-tick" title="decided">\u2713</b>` : ``}</th>`
+          + all.map(x => {
+              if(!id || !x.hit.includes(id))
+                return `<td class="${x.here ? "mx-hcell" : ""}">`
+                     + `<span class="mx-x">\u00b7</span></td>`;
+              const c = x.d.c.find(k => k.id === id) || {};
+              const rep = c.cl || c.tt || "";
+              const d = DECISIONS[r.label];
+              const on = d && d.id === id && d.src === x.d.urn;
+              /* choosing a cell is choosing whose version to follow */
+              return `<td class="${x.here ? "mx-hcell" : ""}"><button class="mx-b${
+                  on ? " on" : ""}" type="button"
+                  data-mx-l="${esc(r.label)}" data-mx-i="${esc(id)}"
+                  data-mx-s="${esc(x.d.urn)}" data-mx-r="${esc(rep)}"
+                  title="${on ? "Chosen" : "Follow"} ${esc(x.d.urn)}${
+                    rep ? " \u2014 " + esc(rep) : ""}">\u25cf</button></td>`;
+            }).join("")
+          + `<td class="mx-n">${total ? `${total}/${REG.length}` : "\u2014"}</td></tr>`;
+      });
+      h += `</tbody></table></div>`;
+      const box = document.createElement("div");
+      box.innerHTML = h;
+      while(box.firstChild) rows.appendChild(box.firstChild);
+      const note2 = document.createElement("p");
+      note2.className = "mx-note";
+      note2.innerHTML = `A dot means that structure carries a component of the `
+        + `same id \u2014 not that the definitions agree. Click one to record `
+        + `that you will follow that structure; <b>By item</b> shows the `
+        + `evidence behind each verdict.`;
+      rows.appendChild(note2);
+      n = results.length;
     }
-    rest.forEach(put);
   } else {
     results.forEach(put);
   }
@@ -2572,6 +2668,7 @@ function run(){
             building the same structure here`}.
         Nothing here says yours must carry them.</p>
     </div></div>`;
+  LAST_SRC = extra ? null : (src === BASE_SET ? null : src.urn);
   const res = extra
     ? labels.map(l => evaluate(l, null, null))
     : src.c.map(c => {
@@ -3134,6 +3231,7 @@ function parseSdmxCsv(rows){
 }
 
 function handleSdmxCsv(t, fileName){
+  LAST_SRC = null;
   document.getElementById("flash").innerHTML = "";
   go("check");
   const banner = `<div class="dsd-bar">
@@ -3204,6 +3302,7 @@ function parseTable(rows){
 }
 
 function handleTable(t, fileName){
+  LAST_SRC = null;
   document.getElementById("flash").innerHTML = "";
   go("check");
   const banner = `<div class="dsd-bar">
@@ -3332,6 +3431,7 @@ function checkDSD(d, fileName){
   document.getElementById("flash").innerHTML = "";
   PENDING_DSD = d; PENDING_FILE = fileName || null;
   go("check");
+  LAST_SRC = d.urn || null;
   const res = d.c.map(c => {
     const inc = {cl:c.cl, cid:c.cid, cag:c.cag, csch:c.csch,
                  std:c.std, tt:c.tt, role:c.role, dsd:d.id};
